@@ -1,0 +1,1943 @@
+<!DOCTYPE html>
+<html lang="ru" style="--tg-viewport-height: 100vh; --tg-viewport-stable-height: 100vh;">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>TMA DSP Audio Player &amp; Studio</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@500;600;700&amp;display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-color: var(--tg-theme-bg-color, #0f172a);
+      --sec-bg: var(--tg-theme-secondary-bg-color, #1e293b);
+      --text-color: var(--tg-theme-text-color, #f8fafc);
+      --hint-color: var(--tg-theme-hint-color, #94a3b8);
+      --btn-color: var(--tg-theme-button-color, #38bdf8);
+      --btn-text: var(--tg-theme-button-text-color, #0f172a);
+    }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      user-select: none;
+      overflow-x: hidden;
+    }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    .glass-card {
+      background: rgba(30, 41, 59, 0.78);
+      backdrop-filter: blur(16px);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.14);
+      border-radius: 999px;
+      outline: none;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: #38bdf8;
+      border: 2px solid #ffffff;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(56, 189, 248, 0.5);
+    }
+    .drawer-backdrop {
+      transition: opacity 0.3s ease;
+    }
+    .drawer-panel {
+      transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .custom-scroll::-webkit-scrollbar { width: 4px; }
+    .custom-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 99px; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between pb-6">
+
+  <!-- ВЕРХНЯЯ ПАНЕЛЬ -->
+  <div class="max-w-md w-full mx-auto px-4 pt-3 space-y-3">
+    <div class="glass-card rounded-2xl p-3.5 flex items-center justify-between shadow-lg">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-sky-400 to-indigo-600 flex items-center justify-center shadow-md">
+          <span class="text-base">🎚️</span>
+        </div>
+        <div>
+          <div class="flex items-center gap-1.5">
+            <span id="live-dot" class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <h1 class="text-sm font-extrabold tracking-tight" id="user-greeting">TMA Audio Studio</h1>
+          </div>
+          <p class="text-[11px]" style="color: var(--hint-color);" id="engine-subtitle">DSP-процессор активен</p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-1.5">
+        <button id="pocket-mode-btn" title="Карманный режим (не гасить экран)" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-400/30 active:scale-95 transition">
+          🌙 Карман
+        </button>
+        <button id="bypass-btn" class="px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 active:scale-95 transition">
+          DSP: ВКЛ
+        </button>
+        <button id="download-html-btn" title="Скачать index.html" class="p-2 rounded-xl bg-white/10 hover:bg-white/15 active:scale-95 transition border border-white/10">
+          <svg class="w-4 h-4 text-sky-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M7 10l5 5m0 0l5-5m-5 5V4"></path>
+          </svg>
+        </button>
+      </div>
+    </div>
+
+    <!-- ГЛАВНЫЙ ЭКРАН ВИЗУАЛИЗАТОРА И ПЛЕЕРА -->
+    <div class="glass-card rounded-3xl p-4 shadow-2xl relative overflow-hidden">
+      <!-- Индикатор текущих активных эффектов -->
+      <div class="flex items-center justify-between mb-2">
+        <div>
+          <span class="text-[10px] font-bold uppercase tracking-wider text-sky-400" id="source-type-badge">ГОТОВ К ЗАПУСКУ</span>
+          <h2 class="text-base font-bold truncate max-w-[230px]" id="now-playing-title">Выберите радио или файл</h2>
+        </div>
+        <button id="vis-mode-btn" class="px-2.5 py-1 rounded-lg bg-white/10 text-[10px] mono text-slate-300 border border-white/10 active:scale-95">
+          📊 Спектр
+        </button>
+      </div>
+
+      <!-- Прыгающий Canvas Визуализатор -->
+      <div class="relative w-full h-44 rounded-2xl bg-slate-950/90 border border-white/10 overflow-hidden shadow-inner flex items-center justify-center">
+        <canvas id="visualizer-canvas" class="w-full h-full block" width="650" height="348"></canvas>
+
+        <!-- Сводка задержек поверх визуализатора -->
+        <div class="absolute top-2.5 left-2.5 right-2.5 flex justify-between items-center pointer-events-none">
+          <span class="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] mono text-sky-300 border border-sky-400/20" id="hud-delay-l">
+            L: 1.43 мс
+          </span>
+          <span class="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] mono text-emerald-300 border border-emerald-400/20" id="hud-width">
+            Стерео: 100%
+          </span>
+          <span class="px-2 py-0.5 rounded-md bg-black/60 backdrop-blur-md text-[10px] mono text-indigo-300 border border-indigo-400/20" id="hud-delay-r">
+            R: 0.00 мс
+          </span>
+        </div>
+      </div>
+
+      <!-- Полоса прогресса для локальных треков -->
+      <div id="seek-container" class="hidden mt-3 space-y-1">
+        <input type="range" id="seek-slider" min="0" max="100" step="0.1" value="0">
+        <div class="flex justify-between text-[10px] mono text-slate-400">
+          <span id="time-current">0:00</span>
+          <span id="time-total">0:00</span>
+        </div>
+      </div>
+
+      <!-- Кнопки управления плеером -->
+      <div class="mt-4 flex items-center justify-between gap-2.5">
+        <button id="main-play-btn" class="flex-1 py-3.5 px-4 rounded-2xl font-extrabold text-sm bg-gradient-to-r from-sky-400 to-indigo-500 text-slate-950 shadow-lg shadow-sky-500/25 active:scale-95 transition flex items-center justify-center gap-2">
+          <span id="main-play-icon">▶</span>
+          <span id="main-play-text">Запустить эфир</span>
+        </button>
+
+        <button id="main-stop-btn" class="py-3.5 px-4 rounded-2xl font-bold text-xs bg-rose-500/20 border border-rose-400/30 text-rose-300 active:scale-95 transition">
+          ⏹ Стоп
+        </button>
+      </div>
+
+      <!-- Громкость -->
+      <div class="mt-3.5 flex items-center gap-3 bg-black/20 px-3 py-2 rounded-xl border border-white/5">
+        <span class="text-xs">🔈</span>
+        <input type="range" id="master-gain-slider" min="0" max="1.5" step="0.01" value="1">
+        <span class="text-[11px] mono w-10 text-right text-sky-300" id="master-gain-label">100%</span>
+      </div>
+    </div>
+
+    <!-- ВЫБОР ИСТОЧНИКА: РАДИО / СВОЙ ФАЙЛ / ГЕНЕРАТОРЫ -->
+    <div class="glass-card rounded-3xl p-4 shadow-xl space-y-3">
+      <div class="flex items-center justify-between">
+        <h3 class="text-xs font-bold uppercase tracking-wider text-slate-300">📻 Источник и Фоновый режим</h3>
+        <button id="bg-mode-toggle" class="text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 mono font-bold active:scale-95 transition">
+          🔒 Фон и экран блока: ВКЛ
+        </button>
+      </div>
+
+      <!-- Станции Радио -->
+      <select id="radio-select" class="w-full p-3 rounded-xl bg-slate-900/90 border border-white/10 text-xs font-semibold text-white focus:outline-none">
+        <option value="https://radiorecord.hostingradio.ru/rr_main96.aacp">🔥 Radio Record — Основной эфир</option>
+        <option value="https://radiorecord.hostingradio.ru/deep96.aacp">🌊 Record Deep</option>
+        <option value="https://radiorecord.hostingradio.ru/wave96.aacp">📻 Radio Wave (Record)</option>
+        <option value="https://radiorecord.hostingradio.ru/tm96.aacp">⚡ Record Trancemission</option>
+        <option value="https://radiorecord.hostingradio.ru/chill96.aacp">🌙 Record Chill-Out</option>
+        <option value="https://radiorecord.hostingradio.ru/synth96.aacp">🌆 Record Synthwave</option>
+        <option value="https://ep256.hostingradio.ru:8052/europaplus256.mp3">🌍 Европа Плюс</option>
+        <option value="https://retro.hostingradio.ru:8043/retro256.mp3">📼 Ретро FM</option>
+        <option value="https://ice1.somafm.com/groovesalad-128-mp3">🥗 SomaFM — Groove Salad</option>
+        <option value="custom">🔗 Вставить свой URL потока...</option>
+      </select>
+
+      <!-- Выбор качества потока -->
+      <select id="stream-quality" class="w-full mt-2 p-2.5 rounded-xl bg-slate-800/80 border border-sky-400/20 text-xs font-bold text-sky-300 focus:outline-none">
+        <option value="low">📶 Экономия трафика (AAC 96 kbps)</option>
+        <option value="high">🎧 Высокое качество (MP3 320 kbps)</option>
+      </select>
+
+      <input type="url" id="custom-url-input" placeholder="https://..." class="hidden w-full mt-2 p-2.5 rounded-xl bg-slate-900 border border-sky-400/40 text-xs mono text-sky-300 focus:outline-none">
+
+      <!-- Кнопка выбора локального файла -->
+      <div class="pt-1">
+        <label class="w-full py-3 px-4 rounded-xl font-bold text-xs bg-emerald-500/20 border border-emerald-400/40 text-emerald-300 text-center cursor-pointer active:scale-95 transition flex items-center justify-center gap-2 relative">
+          <span>📂 Загрузить свой MP3 / FLAC / WAV / M4A</span>
+          <input type="file" id="file-input" accept="audio/*,.mp3,.flac,.wav,.m4a,.aac,.ogg" class="absolute inset-0 opacity-0 cursor-pointer">
+        </label>
+      </div>
+    </div>
+
+    <!-- КНОПКА ОТКРЫТИЯ ВСПЛЫВАЮЩЕЙ ВКЛАДКИ ЭФФЕКТОВ -->
+    <button id="open-dsp-drawer-btn" class="w-full py-4 px-5 rounded-2xl font-extrabold text-sm bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 text-white shadow-xl shadow-purple-500/25 active:scale-98 transition flex items-center justify-between">
+      <span class="flex items-center gap-2">
+        <span class="text-lg">🎛️</span>
+        <span>Открыть пульт DSP и Задержек</span>
+      </span>
+      <span class="px-2.5 py-1 rounded-lg bg-black/30 text-xs mono">12 эффектов ▲</span>
+    </button>
+  </div>
+
+  <!-- ВСПЛЫВАЮЩЕЕ ОКНО (DRAWER) С НАСТРОЙКАМИ ЗАДЕРЖЕК И ЭФФЕКТОВ -->
+  <div id="dsp-drawer" class="fixed inset-0 z-50 pointer-events-none">
+    <!-- Затемнение фона -->
+    <div id="drawer-backdrop" class="drawer-backdrop absolute inset-0 bg-black/70 backdrop-blur-sm opacity-0"></div>
+
+    <!-- Выезжающая панель -->
+    <div id="drawer-panel" class="drawer-panel absolute bottom-0 left-0 right-0 max-w-md mx-auto bg-slate-900 border-t border-white/15 rounded-t-3xl shadow-2xl translate-y-full max-h-[88vh] flex flex-col">
+      
+      <!-- Шапка шторки -->
+      <div class="p-4 border-b border-white/10 flex items-center justify-between shrink-0">
+        <div>
+          <h2 class="text-base font-extrabold flex items-center gap-2">
+            <span>🎛️ Студийная стойка DSP</span>
+          </h2>
+          <p class="text-[11px] text-slate-400">Все изменения применяются в реальном времени</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button id="reset-all-dsp-btn" class="px-2.5 py-1.5 rounded-xl text-xs font-semibold bg-rose-500/20 text-rose-300 border border-rose-500/30 active:scale-95">
+            Сброс
+          </button>
+          <button id="close-dsp-drawer-btn" class="w-8 h-8 rounded-xl bg-white/10 flex items-center justify-center text-sm font-bold active:scale-95">
+            ✕
+          </button>
+        </div>
+      </div>
+
+      <!-- Переключатель вкладок внутри шторки -->
+      <div class="px-4 pt-2.5 grid grid-cols-2 sm:grid-cols-4 gap-1.5 shrink-0">
+        <button data-tab="tab-delay" class="dsp-tab-btn py-2 rounded-xl text-xs font-bold bg-sky-500 text-slate-950">
+          ⏱️ Задержка
+        </button>
+        <button data-tab="tab-eq" class="dsp-tab-btn py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300">
+          🎚️ 16-EQ
+        </button>
+        <button data-tab="tab-space" class="dsp-tab-btn py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300">
+          🌌 Эхо/3D
+        </button>
+        <button data-tab="tab-mic" class="dsp-tab-btn py-2 rounded-xl text-xs font-bold bg-white/10 text-rose-300">
+          🎤 Микро-Тест
+        </button>
+      </div>
+
+      <!-- Прокручиваемое содержимое вкладок -->
+      <div class="p-4 overflow-y-auto custom-scroll space-y-4 flex-1">
+
+        <!-- ВКЛАДКА 1: ЗАДЕРЖКИ КАНАЛОВ И СТЕРЕОБАЗА -->
+        <div id="tab-delay" class="dsp-tab-content space-y-3.5">
+          
+          <!-- Расширитель стереобазы (Mid/Side) -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-2">
+            <div class="flex justify-between items-center">
+              <span class="text-xs font-bold text-emerald-300">↔️ Расширение стереобазы (Mid/Side)</span>
+              <span class="mono text-xs font-bold text-emerald-400" id="val-stereo-width">100%</span>
+            </div>
+            <input type="range" id="fx-stereo-width" min="0" max="250" step="1" value="100">
+            <div class="flex justify-between text-[10px] text-slate-400">
+              <span>0% (Моно)</span>
+              <span>100% (Норма)</span>
+              <span>250% (Супер-широко)</span>
+            </div>
+          </div>
+
+          <!-- Поканальная задержка L и R -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-3">
+            <div class="flex items-center justify-between gap-1">
+              <span class="text-xs font-bold text-sky-300">⏱️ Задержка L / R каналов</span>
+              <div class="flex items-center gap-1.5">
+                <button id="test-click-btn" class="px-2 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-400/30 active:scale-95">
+                  🥁 Тест-щелчки
+                </button>
+                <button id="haas-test-btn" class="px-2 py-1 rounded-lg bg-sky-500/20 text-sky-300 text-[10px] font-bold border border-sky-400/30 active:scale-95">
+                  Тест 35 мс
+                </button>
+              </div>
+            </div>
+
+            <!-- Левый канал -->
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-xs text-slate-300">Левый канал (L)</span>
+                <span class="mono text-xs font-bold text-sky-400" id="val-delay-l">1.43 мс (49 см)</span>
+              </div>
+              <input type="range" id="fx-delay-l" min="0" max="150" step="0.05" value="1.43">
+            </div>
+
+            <!-- Правый канал -->
+            <div class="space-y-1">
+              <div class="flex justify-between">
+                <span class="text-xs text-slate-300">Правый канал (R)</span>
+                <span class="mono text-xs font-bold text-indigo-400" id="val-delay-r">0.00 мс (0 см)</span>
+              </div>
+              <input type="range" id="fx-delay-r" min="0" max="150" step="0.05" value="0.00">
+            </div>
+
+            <!-- Панорама / Баланс -->
+            <div class="space-y-1 pt-2 border-t border-white/10">
+              <div class="flex justify-between">
+                <span class="text-xs text-slate-300">⚖️ Баланс сцены (Панорама L/R)</span>
+                <span class="mono text-xs font-bold text-amber-300" id="val-pan">Центр</span>
+              </div>
+              <input type="range" id="fx-pan" min="-1" max="1" step="0.02" value="0">
+            </div>
+          </div>
+
+          <!-- Калькулятор по дистанции в сантиметрах -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-2.5">
+            <span class="text-xs font-bold block text-slate-200">📏 Калькулятор задержки по расстоянию (см)</span>
+            <div class="grid grid-cols-3 gap-2">
+              <div class="bg-slate-900 p-2 rounded-xl border border-white/5">
+                <label class="text-[10px] text-slate-400 block">Левый (см)</label>
+                <input type="number" id="dist-l" value="78" class="w-full bg-transparent font-bold mono text-sm text-sky-300 focus:outline-none">
+              </div>
+              <div class="bg-slate-900 p-2 rounded-xl border border-white/5">
+                <label class="text-[10px] text-slate-400 block">Правый (см)</label>
+                <input type="number" id="dist-r" value="127" class="w-full bg-transparent font-bold mono text-sm text-indigo-300 focus:outline-none">
+              </div>
+              <div class="bg-slate-900 p-2 rounded-xl border border-white/5">
+                <label class="text-[10px] text-slate-400 block">Саб (см)</label>
+                <input type="number" id="dist-sub" value="180" class="w-full bg-transparent font-bold mono text-sm text-amber-300 focus:outline-none">
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <button id="calc-lr-btn" class="py-2 rounded-xl text-xs font-bold bg-sky-500 text-slate-950">Рассчитать L/R</button>
+              <button id="calc-sub-btn" class="py-2 rounded-xl text-xs font-bold bg-white/10 text-white">С учетом Саба</button>
+            </div>
+          </div>
+        </div>
+
+        
+        <!-- ВКЛАДКА 4: АВТО-МИКРОФОН (ЗАДЕРЖКИ) -->
+        <div id="tab-mic" class="dsp-tab-content hidden space-y-3.5">
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-bold text-rose-300">🎤 Авто-настройка задержек (L/R)</span>
+            </div>
+            <p class="text-[10px] text-slate-400">
+              Положите телефон на место головы водителя (микрофоном вверх). Программа подаст громкие щелчки в каналы и измерит задержку.<br><br>
+              <b class="text-amber-400">ВНИМАНИЕ (ДЛЯ АВТО):</b> При доступе к микрофону Bluetooth принудительно переходит в режим "Телефонный звонок" (HFP). Этот профиль монофонический по своей природе. Чтобы тест стерео-сцены сработал, телефон должен быть подключен к магнитоле через <b>AUX, USB, CarPlay или Android Auto</b>.
+            </p>
+            <div class="bg-slate-900 p-3 rounded-xl border border-white/5 space-y-2 text-center">
+              <div id="mic-status" class="text-xs font-bold text-slate-300">Ожидание...</div>
+              <div class="flex justify-between text-[10px] mono text-slate-500">
+                <span id="mic-res-l">L: --</span>
+                <span id="mic-res-r">R: --</span>
+                <span id="mic-res-diff">Δ: --</span>
+              </div>
+            </div>
+            <button id="start-mic-align-btn" class="w-full py-2.5 rounded-xl text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 active:scale-95 transition">
+              Начать акустический замер
+            </button>
+          </div>
+        </div>
+
+        <!-- ВКЛАДКА 2: ЭХО, РЕВЕРБЕРАТОР, 3D ВРАЩЕНИЕ -->
+        <div id="tab-space" class="dsp-tab-content hidden space-y-3.5">
+          
+          <!-- Акустический Ревербератор (Reverb) -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-2.5">
+            <div class="flex justify-between">
+              <span class="text-xs font-bold text-purple-300">🏛️ Реверберация (Акустика зала)</span>
+              <span class="mono text-xs font-bold text-purple-400" id="val-reverb">0%</span>
+            </div>
+            <input type="range" id="fx-reverb-mix" min="0" max="1" step="0.01" value="0">
+
+            <div class="flex justify-between pt-1 items-center">
+              <span class="text-xs text-slate-300">Размер зала (Длительность хвоста)</span>
+              <span class="mono text-xs text-purple-300 text-right" id="val-reverb-decay">
+                2.2 с<br><span class="text-[9px] text-slate-400">≈ 42 м², 126 м³</span>
+              </span>
+            </div>
+            <input type="range" id="fx-reverb-decay" min="0.4" max="5.0" step="0.2" value="2.2">
+          </div>
+
+          <!-- Пространственное Эхо (Delay Echo) -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-2.5">
+            <div class="flex justify-between">
+              <span class="text-xs font-bold text-pink-300">⛰️ Эхо (Ping-Pong Delay)</span>
+              <span class="mono text-xs font-bold text-pink-400" id="val-echo-mix">0%</span>
+            </div>
+            <input type="range" id="fx-echo-mix" min="0" max="0.8" step="0.01" value="0">
+
+            <div class="flex justify-between">
+              <span class="text-xs text-slate-300">Время эха (мс)</span>
+              <span class="mono text-xs text-pink-300" id="val-echo-time">280 мс</span>
+            </div>
+            <input type="range" id="fx-echo-time" min="60" max="800" step="10" value="280">
+
+            <div class="flex justify-between">
+              <span class="text-xs text-slate-300">Повторы (Feedback)</span>
+              <span class="mono text-xs text-pink-300" id="val-echo-fb">35%</span>
+            </div>
+            <input type="range" id="fx-echo-fb" min="0" max="0.85" step="0.01" value="0.35">
+          </div>
+
+          <!-- 8D / 3D Авто-паннер и Скорость (Pitch) -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-2.5">
+            <div class="flex justify-between">
+              <span class="text-xs font-bold text-cyan-300">🌀 8D Вращение звука (Auto-Pan LFO)</span>
+              <span class="mono text-xs font-bold text-cyan-400" id="val-autopan">Выкл</span>
+            </div>
+            <input type="range" id="fx-autopan" min="0" max="1" step="0.02" value="0">
+          </div>
+        </div>
+
+        <!-- ВКЛАДКА 3: 16-ПОЛОСНЫЙ ЭКВАЛАЙЗЕР, САТУРАЦИЯ, ФИЛЬТР -->
+        <div id="tab-eq" class="dsp-tab-content hidden space-y-3.5">
+          
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <span class="text-xs font-bold text-amber-300 block">🎚️ 16-полосный графический эквалайзер</span>
+                <span class="text-[10px] text-slate-400">Диапазон от -15 дБ до +15 дБ</span>
+              </div>
+              <div class="flex gap-1.5 flex-col items-end sm:flex-row sm:items-center">
+                <button id="auto-eq-btn" class="px-2.5 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-400/30 active:scale-95 transition whitespace-nowrap">
+                  🤖 Авто-АЧХ
+                </button>
+                <button id="eq-flat-btn" class="px-2.5 py-1 rounded-lg bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-400/30 active:scale-95 transition whitespace-nowrap">
+                  В ноль (0 дБ)
+                </button>
+              </div>
+            </div>
+
+            <!-- Быстрые пресеты 16-полосного эквалайзера -->
+            <div class="flex gap-1.5 overflow-x-auto pb-1 custom-scroll">
+              <button data-preset="bass" class="eq-preset-btn shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-sky-300 border border-white/10">🔊 Мега-Бас</button>
+              <button data-preset="vshape" class="eq-preset-btn shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-emerald-300 border border-white/10">⚡ V-Shape (Клуб)</button>
+              <button data-preset="vocal" class="eq-preset-btn shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-purple-300 border border-white/10">🎤 Четкий вокал</button>
+              <button data-preset="rock" class="eq-preset-btn shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-pink-300 border border-white/10">🎸 Рок / Драйв</button>
+              <button data-preset="air" class="eq-preset-btn shrink-0 px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/15 text-[10px] font-bold text-amber-300 border border-white/10">✨ Кристалл ВЧ</button>
+            </div>
+
+            <!-- Контейнер 16 бегунков эквалайзера -->
+            <div id="eq-16-container" class="grid grid-cols-1 gap-2 max-h-72 overflow-y-auto pr-1 custom-scroll">
+              <!-- JS генерирует ползунки здесь -->
+            </div>
+          </div>
+
+          <!-- Ламповый перегруз и DJ-фильтр -->
+          <div class="bg-slate-800/80 p-3.5 rounded-2xl border border-white/10 space-y-3">
+            <div>
+              <div class="flex justify-between">
+                <span class="text-xs font-bold text-orange-300">🔥 Ламповый сатуратор (Warm Drive)</span>
+                <span class="mono text-xs font-bold text-orange-400" id="val-drive">0%</span>
+              </div>
+              <input type="range" id="fx-drive" min="0" max="100" step="1" value="0">
+            </div>
+
+            <div class="pt-2 border-t border-white/10">
+              <div class="flex justify-between">
+                <span class="text-xs font-bold text-indigo-300">🎛️ DJ Фильтр среза ВЧ (Low-Pass)</span>
+                <span class="mono text-xs font-bold text-indigo-400" id="val-lpf">20000 Гц</span>
+              </div>
+              <input type="range" id="fx-lpf" min="200" max="20000" step="50" value="20000">
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- Всплывающее уведомление -->
+  <div id="toast" class="fixed top-4 left-1/2 -translate-x-1/2 px-4 py-2 rounded-xl bg-sky-500 text-slate-950 text-xs font-extrabold shadow-2xl pointer-events-none transition-opacity duration-300 z-50 opacity-0">Файл index.html сохранен!</div>
+
+  <!-- ОВЕРЛЕЙ КАРМАННОГО РЕЖИМА (ЧЕРНЫЙ ЭКРАН ДЛЯ OLED / АВТОМОБИЛЯ БЕЗ ПРЕРЫВАНИЯ DSP) -->
+  <div id="pocket-overlay" class="fixed inset-0 bg-black z-[100] hidden flex-col items-center justify-between p-8 text-center select-none">
+    <div class="text-[11px] mono text-slate-600 pt-4">
+      🔋 Энергосбережение OLED • DSP и Радио работают непрерывно
+    </div>
+    <div class="space-y-3">
+      <div class="w-16 h-16 rounded-full border border-slate-800 flex items-center justify-center mx-auto text-2xl opacity-40">
+        🔒
+      </div>
+      <p class="text-sm font-bold text-slate-500" id="pocket-station-title">Аудио-процессор активен</p>
+      <p class="text-xs text-slate-700">Дважды нажмите в любом месте, чтобы вернуть экран</p>
+    </div>
+    <button id="exit-pocket-btn" class="w-full max-w-xs py-3.5 rounded-2xl border border-slate-800 text-slate-500 text-xs font-bold active:bg-slate-900">
+      Разблокировать интерфейс
+    </button>
+  </div>
+
+  <!-- Скрытый системный аудио-элемент для удержания фонового режима iOS/Android на экране блокировки -->
+  <audio id="keep-alive-audio" playsinline="" loop="" class="hidden" src="data:audio/wav;base64,UklGRiR9AABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQB9AAABAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//wEA//8BAP//AQD//w=="></audio>
+
+  <script>
+    // =========================================================================
+    // 1. ИНИЦИАЛИЗАЦИЯ TELEGRAM MINI APP
+    // =========================================================================
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+      const u = tg.initDataUnsafe?.user;
+      if (u?.first_name) {
+        document.getElementById('user-greeting').textContent = `${u.first_name} • DSP Studio`;
+      }
+    }
+
+    function haptic(type = 'light') {
+      try {
+        if (!tg?.HapticFeedback) return;
+        if (type === 'sel') tg.HapticFeedback.selectionChanged();
+        else if (type === 'ok') tg.HapticFeedback.notificationOccurred('success');
+        else tg.HapticFeedback.impactOccurred(type);
+      } catch (e) {}
+    }
+
+    function showToast(msg) {
+      const el = document.getElementById('toast');
+      el.textContent = msg;
+      el.classList.remove('opacity-0');
+      setTimeout(() => el.classList.add('opacity-0'), 2200);
+    }
+
+    // =========================================================================
+    // 2. ПОЛНЫЙ WEB AUDIO API ПРОЦЕССОР (ГАРАНТИРОВАННАЯ РАБОТА НА iOS И ANDROID)
+    // =========================================================================
+    const SPEED_OF_SOUND = 34.3;
+    // 16 стандартных ISO частот для 16-полосного эквалайзера
+    const EQ_16_FREQS = [25, 40, 63, 100, 160, 250, 400, 630, 1000, 1600, 2500, 4000, 6300, 10000, 12500, 16000];
+    let eqBands = [];            // Массив из 16 BiquadFilterNode
+
+    let audioCtx = null;
+    let inputBus = null;         // Входная шина всех источников
+    let dryBypassGain = null;    // Прямой обход (Bypass)
+    let wetMasterGain = null;    // Выход после всех эффектов
+    let masterGain = null;       // Финальная громкость
+    let analyser = null;
+    let eqAnalyser = null; // Высокоточный анализатор для Авто-АЧХ         // Анализатор спектра для Canvas
+
+    // Узлы эффектов
+    let lpfNode = null, driveNode = null;
+    let splitterLR = null, delayL = null, delayR = null, mergerLR = null;
+    let midSideSplit = null, midSideMerge = null;
+    let sideGainL = null, sideGainR = null, midGain = null;
+    let stereoPanner = null;
+    let echoDelay = null, echoFeedback = null, echoWet = null;
+    let convolverNode = null, reverbWet = null;
+    let autoPanOsc = null, autoPanGain = null;
+
+    let isBypassed = false;
+    let visMode = 0; // 0 - спектр с пиками, 1 - неоновая волна, 2 - симметричный центр
+
+    // Глобальные состояния плеера и фонового режима
+    let isPlaying = false;
+    let activeMode = 'radio'; // 'radio' | 'file' | 'click'
+    let radioAbortCtrl = null;
+    let radioHtmlAudio = null;
+    let radioMediaNode = null;
+    let fileAudioBuffer = null;
+    let fileBufferSource = null;
+    let fileStartTime = 0;
+    let filePauseOffset = 0;
+    let clickTimer = null;
+    let wakeLockSentinel = null;
+    let mediaStreamDest = null;
+    let bgLockScreenEnabled = true;
+    const keepAliveAudio = document.getElementById('keep-alive-audio');
+
+    // Генерация 16 ползунков эквалайзера в DOM
+    function buildEq16UI() {
+      const container = document.getElementById('eq-16-container');
+      container.innerHTML = '';
+      EQ_16_FREQS.forEach((freq, idx) => {
+        const freqLabel = freq >= 1000 ? `${(freq / 1000).toFixed(freq % 1000 === 0 ? 0 : 1)} кГц` : `${freq} Гц`;
+        const row = document.createElement('div');
+        row.className = 'flex items-center gap-2.5 bg-slate-900/75 px-3 py-1.5 rounded-xl border border-white/5';
+        row.innerHTML = `
+          <span class="text-[11px] mono font-bold text-slate-300 w-16 shrink-0">${ idx + 1 }. ${freqLabel}</span>
+          <input type="range" id="fx-eq-band-${idx}" data-band="${idx}" min="-15" max="15" step="0.5" value="0" class="eq-16-slider flex-1">
+          <span id="val-eq-band-${idx}" class="text-[11px] mono font-bold text-amber-400 w-12 text-right shrink-0">0.0 дБ</span>
+        `;
+        container.appendChild(row);
+      });
+
+      document.querySelectorAll('.eq-16-slider').forEach(slider => {
+        slider.addEventListener('input', () => {
+          initAudioEngine();
+          syncAllDspParams();
+        });
+      });
+    }
+    buildEq16UI();
+
+    // Генерация тихого WAV-аудио для удержания фонового режима iOS/Android
+    function createSilentWavDataUri() {
+      const sampleRate = 8000;
+      const numSamples = sampleRate * 2; // 2 секунды
+      const buffer = new ArrayBuffer(44 + numSamples * 2);
+      const view = new DataView(buffer);
+      const writeStr = (offset, str) => {
+        for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+      };
+      writeStr(0, 'RIFF');
+      view.setUint32(4, 36 + numSamples * 2, true);
+      writeStr(8, 'WAVE');
+      writeStr(12, 'fmt ');
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, sampleRate, true);
+      view.setUint32(28, sampleRate * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, 'data');
+      view.setUint32(40, numSamples * 2, true);
+      // Едва заметный суб-импульс (1 бит), чтобы iOS не посчитал поток "абсолютной тишиной" и не усыпил AudioContext
+      for (let i = 0; i < numSamples; i++) {
+        view.setInt16(44 + i * 2, (i % 2 === 0) ? 1 : -1, true);
+      }
+      const bytes = new Uint8Array(buffer);
+      let binary = '';
+      for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+      return 'data:audio/wav;base64,' + btoa(binary);
+    }
+    keepAliveAudio.src = createSilentWavDataUri();
+    keepAliveAudio.volume = 0.01;
+
+    // Регистрация в системном плеере на экране блокировки (iOS Control Center / Android Lock Screen)
+    function updateLockScreenMetadata(titleText) {
+      if (!('mediaSession' in navigator)) return;
+      try {
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: titleText || 'TMA DSP Audio Studio',
+          artist: 'DSP Задержка & Стереобаза',
+          album: 'Telegram Mini App Audio'
+        });
+        navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+
+        navigator.mediaSession.setActionHandler('play', () => {
+          if (audioCtx && audioCtx.state !== 'running') audioCtx.resume();
+          if (!isPlaying) document.getElementById('main-play-btn').click();
+        });
+        navigator.mediaSession.setActionHandler('pause', () => {
+          stopEverything();
+        });
+        navigator.mediaSession.setActionHandler('stop', () => {
+          stopEverything();
+        });
+      } catch (e) {}
+    }
+
+    // Удержание экрана от засыпания (Screen Wake Lock API)
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          wakeLockSentinel = await navigator.wakeLock.request('screen');
+        } catch (e) {}
+      }
+    }
+
+    // Авто-восстановление AudioContext при сворачивании/блокировке экрана
+    document.addEventListener('visibilitychange', () => {
+      if (isPlaying && audioCtx) {
+        if (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted') {
+          audioCtx.resume().catch(() => {});
+        }
+        if (document.visibilityState === 'visible') {
+          requestWakeLock();
+        }
+      }
+    });
+
+    setInterval(() => {
+      if (isPlaying && audioCtx && audioCtx.state !== 'running') {
+        audioCtx.resume().catch(() => {});
+      }
+    }, 1500);
+
+    function initAudioEngine() {
+      if (audioCtx) {
+        if (audioCtx.state !== 'running') audioCtx.resume();
+        return;
+      }
+      const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+      audioCtx = new AudioContextClass();
+
+      // Отслеживаем попытки iOS усыпить AudioContext при блокировке
+      audioCtx.onstatechange = () => {
+        if (isPlaying && (audioCtx.state === 'suspended' || audioCtx.state === 'interrupted')) {
+          audioCtx.resume().catch(() => {});
+        }
+      };
+
+      inputBus = audioCtx.createGain();
+      dryBypassGain = audioCtx.createGain();
+      wetMasterGain = audioCtx.createGain();
+      masterGain = audioCtx.createGain();
+
+      analyser = audioCtx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.80;
+
+      if (!eqAnalyser) {
+        eqAnalyser = audioCtx.createAnalyser();
+        eqAnalyser.fftSize = 8192; // Высокое разрешение для низких частот (25 Гц)
+        eqAnalyser.smoothingTimeConstant = 0.2;
+      }
+
+      // 1. Создаем 16-полосный каскадный эквалайзер
+      eqBands = EQ_16_FREQS.map((freq, idx) => {
+        const filter = audioCtx.createBiquadFilter();
+        if (idx === 0) {
+          filter.type = 'lowshelf';
+        } else if (idx === EQ_16_FREQS.length - 1) {
+          filter.type = 'highshelf';
+        } else {
+          filter.type = 'peaking';
+          filter.Q.value = 1.4;
+        }
+        filter.frequency.value = freq;
+        filter.gain.value = 0;
+        return filter;
+      });
+
+      // Соединяем 16 полос последовательно
+      for (let i = 0; i < eqBands.length - 1; i++) {
+        eqBands[i].connect(eqBands[i + 1]);
+      }
+
+      lpfNode = audioCtx.createBiquadFilter();
+      lpfNode.type = 'lowpass';
+      lpfNode.frequency.value = 20000;
+
+      // 2. Ламповый сатуратор
+      driveNode = audioCtx.createWaveShaper();
+      driveNode.curve = makeDistortionCurve(0);
+      driveNode.oversample = '2x';
+
+      // 3. Поканальная задержка L / R (до 1 секунды запаса)
+      splitterLR = audioCtx.createChannelSplitter(2);
+      delayL = audioCtx.createDelay(1.0);
+      delayR = audioCtx.createDelay(1.0);
+      mergerLR = audioCtx.createChannelMerger(2);
+
+      // 4. Расширитель стереобазы (Матрица кроссфида/противофазы для ширины до 250%)
+      // Реализуем через матрицу 2x2 усиления каналов (L_out = m*L + s*R, R_out = m*R + s*L)
+      midSideSplit = audioCtx.createChannelSplitter(2);
+      midSideMerge = audioCtx.createChannelMerger(2);
+      midGain = audioCtx.createGain();       // Прямой канал
+      sideGainL = audioCtx.createGain();     // Перекрестный вычитающий канал L->R
+      sideGainR = audioCtx.createGain();     // Перекрестный вычитающий канал R->L
+
+      // 5. Панорама и 8D авто-паннер
+      stereoPanner = audioCtx.createStereoPanner
+        ? audioCtx.createStereoPanner()
+        : audioCtx.createGain();
+
+      if (audioCtx.createStereoPanner) {
+        autoPanOsc = audioCtx.createOscillator();
+        autoPanGain = audioCtx.createGain();
+        autoPanOsc.frequency.value = 0.35; // 1 оборот за ~3 сек
+        autoPanGain.gain.value = 0;
+        autoPanOsc.connect(autoPanGain);
+        autoPanGain.connect(stereoPanner.pan);
+        autoPanOsc.start();
+      }
+
+      // 6. Эхо (Feedback Delay)
+      echoDelay = audioCtx.createDelay(1.5);
+      echoFeedback = audioCtx.createGain();
+      echoWet = audioCtx.createGain();
+      echoDelay.connect(echoFeedback);
+      echoFeedback.connect(echoDelay);
+      echoDelay.connect(echoWet);
+
+      // 7. Ревербератор (Синтетический импульс зала)
+      convolverNode = audioCtx.createConvolver();
+      reverbWet = audioCtx.createGain();
+      convolverNode.buffer = buildReverbImpulse(2.2);
+      convolverNode.connect(reverbWet);
+
+      // СБОРКА ЦЕПИ DSP:
+      // Режим Bypass (прямой сигнал в обход обработки)
+      inputBus.connect(eqAnalyser); // Параллельный отвод сырого звука для анализатора
+      inputBus.connect(dryBypassGain);
+      dryBypassGain.gain.value = 0;
+      dryBypassGain.connect(masterGain);
+
+      // Основная ветка обработки через 16-полосный эквалайзер:
+      inputBus.connect(eqBands[0]);
+      eqBands[eqBands.length - 1].connect(lpfNode);
+      lpfNode.connect(driveNode);
+
+      // Разделение на Левый и Правый для независимой задержки
+      driveNode.connect(splitterLR);
+      splitterLR.connect(delayL, 0);
+      splitterLR.connect(delayR, 1);
+      delayL.connect(mergerLR, 0, 0);
+      delayR.connect(mergerLR, 0, 1);
+
+      // Матрица расширения стереобазы после задержек
+      mergerLR.connect(midSideSplit);
+      // Прямые связи L->L и R->R
+      midSideSplit.connect(midGain, 0);
+      midSideSplit.connect(midGain, 1);
+      // Для независимого управления шириной используем 4 узла матрицы
+      const gLL = audioCtx.createGain();
+      const gRR = audioCtx.createGain();
+      const gLR = audioCtx.createGain();
+      const gRL = audioCtx.createGain();
+      window._widthMatrix = { gLL, gRR, gLR, gRL };
+
+      midSideSplit.connect(gLL, 0);
+      midSideSplit.connect(gRR, 1);
+      midSideSplit.connect(gLR, 0);
+      midSideSplit.connect(gRL, 1);
+
+      gLL.connect(midSideMerge, 0, 0);
+      gRL.connect(midSideMerge, 0, 0);
+      gRR.connect(midSideMerge, 0, 1);
+      gLR.connect(midSideMerge, 0, 1);
+
+      midSideMerge.connect(stereoPanner);
+
+      // Сухой обработанный сигнал + посылы на Эхо и Реверб
+      stereoPanner.connect(wetMasterGain);
+      stereoPanner.connect(echoDelay);
+      echoWet.connect(wetMasterGain);
+
+      stereoPanner.connect(convolverNode);
+      reverbWet.connect(wetMasterGain);
+
+      wetMasterGain.connect(masterGain);
+      masterGain.connect(analyser);
+      analyser.connect(audioCtx.destination);
+
+      // Подключаем выход к MediaStreamDestination для трансляции в системный <audio> при блокировке
+      if (audioCtx.createMediaStreamDestination) {
+        try {
+          mediaStreamDest = audioCtx.createMediaStreamDestination();
+          masterGain.connect(mediaStreamDest);
+        } catch (e) {}
+      }
+
+      syncAllDspParams();
+    }
+
+    function makeDistortionCurve(amount = 0) {
+      const k = amount * 2.5;
+      const n = 44100;
+      const curve = new Float32Array(n);
+      const deg = Math.PI / 180;
+      for (let i = 0; i < n; ++i) {
+        const x = (i * 2) / n - 1;
+        curve[i] = k === 0 ? x : ((3 + k) * x * 20 * deg) / (Math.PI + k * Math.abs(x));
+      }
+      return curve;
+    }
+
+    function buildReverbImpulse(seconds = 2.2) {
+      const rate = audioCtx.sampleRate;
+      const length = Math.floor(rate * seconds);
+      const impulse = audioCtx.createBuffer(2, length, rate);
+      for (let ch = 0; ch < 2; ch++) {
+        const data = impulse.getChannelData(ch);
+        for (let i = 0; i < length; i++) {
+          data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.4);
+        }
+      }
+      return impulse;
+    }
+
+    // =========================================================================
+    // 3. СИНХРОНИЗАЦИЯ ВСЕХ ПОЛЗУНКОВ С DSP-ДВИЖКОМ
+    // =========================================================================
+    function syncAllDspParams() {
+      const msL = parseFloat(document.getElementById('fx-delay-l').value) || 0;
+      const msR = parseFloat(document.getElementById('fx-delay-r').value) || 0;
+      const widthPct = parseFloat(document.getElementById('fx-stereo-width').value) || 100;
+      const panVal = parseFloat(document.getElementById('fx-pan').value) || 0;
+
+      const revMix = parseFloat(document.getElementById('fx-reverb-mix').value) || 0;
+      const echoMix = parseFloat(document.getElementById('fx-echo-mix').value) || 0;
+      const echoTimeMs = parseFloat(document.getElementById('fx-echo-time').value) || 280;
+      const echoFb = parseFloat(document.getElementById('fx-echo-fb').value) || 0.35;
+      const autoPanDepth = parseFloat(document.getElementById('fx-autopan').value) || 0;
+
+      const driveVal = parseFloat(document.getElementById('fx-drive').value) || 0;
+      const lpfHz = parseFloat(document.getElementById('fx-lpf').value) || 20000;
+      const vol = parseFloat(document.getElementById('master-gain-slider').value) || 1;
+
+      // Обновляем подписи 16 полос эквалайзера
+      EQ_16_FREQS.forEach((_, idx) => {
+        const sliderEl = document.getElementById(`fx-eq-band-${idx}`);
+        const valEl = document.getElementById(`val-eq-band-${idx}`);
+        if (sliderEl && valEl) {
+          const db = parseFloat(sliderEl.value) || 0;
+          valEl.textContent = `${db > 0 ? '+' : ''}${db.toFixed(1)} дБ`;
+          valEl.className = db === 0
+            ? 'text-[11px] mono font-bold text-slate-400 w-12 text-right shrink-0'
+            : (db > 0 ? 'text-[11px] mono font-bold text-emerald-400 w-12 text-right shrink-0' : 'text-[11px] mono font-bold text-rose-400 w-12 text-right shrink-0');
+        }
+      });
+
+      // Обновляем подписи UI
+      document.getElementById('val-delay-l').textContent = `${msL.toFixed(2)} мс (${Math.round(msL * SPEED_OF_SOUND)} см)`;
+      document.getElementById('val-delay-r').textContent = `${msR.toFixed(2)} мс (${Math.round(msR * SPEED_OF_SOUND)} см)`;
+      document.getElementById('hud-delay-l').textContent = `L: ${msL.toFixed(2)} мс`;
+      document.getElementById('hud-delay-r').textContent = `R: ${msR.toFixed(2)} мс`;
+      document.getElementById('val-stereo-width').textContent = `${widthPct}%`;
+      document.getElementById('hud-width').textContent = `Стерео: ${widthPct}%`;
+      document.getElementById('val-pan').textContent = panVal === 0 ? 'Центр' : (panVal < 0 ? `L ${Math.round(Math.abs(panVal)*100)}%` : `R ${Math.round(panVal*100)}%`);
+
+      document.getElementById('val-reverb').textContent = `${Math.round(revMix * 100)}%`;
+      document.getElementById('val-echo-mix').textContent = `${Math.round(echoMix * 100)}%`;
+      document.getElementById('val-echo-time').textContent = `${echoTimeMs} мс`;
+      document.getElementById('val-echo-fb').textContent = `${Math.round(echoFb * 100)}%`;
+      document.getElementById('val-autopan').textContent = autoPanDepth === 0 ? 'Выкл' : `${Math.round(autoPanDepth * 100)}%`;
+
+      document.getElementById('val-drive').textContent = `${driveVal}%`;
+      document.getElementById('val-lpf').textContent = `${lpfHz} Гц`;
+      document.getElementById('master-gain-label').textContent = `${Math.round(vol * 100)}%`;
+
+      if (!audioCtx) return;
+      const now = audioCtx.currentTime;
+
+      // Применяем задержки L/R
+      delayL.delayTime.setTargetAtTime(msL / 1000, now, 0.015);
+      delayR.delayTime.setTargetAtTime(msR / 1000, now, 0.015);
+
+      // Матрица ширины стереобазы (Mid/Side коэфф. w = widthPct / 100)
+      if (window._widthMatrix) {
+        const w = widthPct / 100;
+        const same = (1 + w) * 0.5;
+        const cross = (1 - w) * 0.5;
+        window._widthMatrix.gLL.gain.setTargetAtTime(same, now, 0.015);
+        window._widthMatrix.gRR.gain.setTargetAtTime(same, now, 0.015);
+        window._widthMatrix.gLR.gain.setTargetAtTime(cross, now, 0.015);
+        window._widthMatrix.gRL.gain.setTargetAtTime(cross, now, 0.015);
+      }
+
+      if (stereoPanner.pan) {
+        stereoPanner.pan.setTargetAtTime(panVal, now, 0.02);
+      }
+      if (autoPanGain) {
+        autoPanGain.gain.setTargetAtTime(autoPanDepth, now, 0.02);
+      }
+
+      reverbWet.gain.setTargetAtTime(revMix * 1.4, now, 0.02);
+      echoWet.gain.setTargetAtTime(echoMix, now, 0.02);
+      echoDelay.delayTime.setTargetAtTime(echoTimeMs / 1000, now, 0.02);
+      echoFeedback.gain.setTargetAtTime(echoFb, now, 0.02);
+
+      // Применяем все 16 полос эквалайзера
+      if (eqBands.length === 16) {
+        eqBands.forEach((filter, idx) => {
+          const sliderEl = document.getElementById(`fx-eq-band-${idx}`);
+          const db = sliderEl ? (parseFloat(sliderEl.value) || 0) : 0;
+          filter.gain.setTargetAtTime(db, now, 0.02);
+        });
+      }
+
+      lpfNode.frequency.setTargetAtTime(lpfHz, now, 0.02);
+      driveNode.curve = makeDistortionCurve(driveVal);
+
+      masterGain.gain.setTargetAtTime(vol, now, 0.02);
+    }
+
+    // Привязываем все ползунки
+    const sliderIds = [
+      'fx-delay-l', 'fx-delay-r', 'fx-stereo-width', 'fx-pan',
+      'fx-reverb-mix', 'fx-echo-mix', 'fx-echo-time', 'fx-echo-fb', 'fx-autopan',
+      'fx-drive', 'fx-lpf', 'master-gain-slider'
+    ];
+    sliderIds.forEach(id => {
+      document.getElementById(id).addEventListener('input', () => {
+        initAudioEngine();
+        syncAllDspParams();
+      });
+    });
+
+    // Пресеты 16-полосного эквалайзера
+    const EQ_PRESETS = {
+      flat:   [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      bass:   [9, 8.5, 7, 5, 2.5, 0, -1, -1, 0, 0, 0.5, 1, 1.5, 2, 2, 1.5],
+      vshape: [7, 6.5, 5, 2.5, 0, -2.5, -4, -4, -3, -1, 1.5, 3.5, 5, 6.5, 7.5, 8],
+      vocal:  [-3, -2.5, -2, -1, 1, 3, 5, 6, 6, 5, 3.5, 2, 0.5, 0, -1, -1.5],
+      rock:   [5.5, 4.5, 3.5, 1.5, -1, -2.5, -1.5, 0.5, 2.5, 4, 5, 5.5, 5, 4.5, 4, 4],
+      air:    [0, 0, 0, 0, 0, 0, 0, 0.5, 1, 2, 3.5, 5, 6.5, 8, 9.5, 10.5]
+    };
+
+    function applyEqPreset(values) {
+      initAudioEngine();
+      values.forEach((v, idx) => {
+        const el = document.getElementById(`fx-eq-band-${idx}`);
+        if (el) el.value = v;
+      });
+      syncAllDspParams();
+      haptic('sel');
+    }
+
+    
+    // === АЛГОРИТМ АВТОМАТИЧЕСКОГО ВЫРАВНИВАНИЯ АЧХ (AUTO-EQ) ===
+    document.getElementById('auto-eq-btn').addEventListener('click', (e) => {
+      const btn = e.target;
+      if (btn.disabled) return;
+      if (!isPlaying || !audioCtx || !eqAnalyser) {
+        showToast('Сначала включите музыку (Радио или Файл)!');
+        haptic('light');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Анализ 2 сек...';
+      btn.classList.replace('bg-emerald-500/20', 'bg-rose-500/20');
+      btn.classList.replace('text-emerald-300', 'text-rose-300');
+      btn.classList.replace('border-emerald-400/30', 'border-rose-400/30');
+      haptic('light');
+
+      const nyquist = audioCtx.sampleRate / 2;
+      const binCount = eqAnalyser.frequencyBinCount;
+      const dataArray = new Float32Array(binCount);
+      
+      const maxSnapshots = 20; // 20 раз по 100 мс = 2 секунды
+      let snapshots = 0;
+      const bandAverages = new Float32Array(16);
+
+      const interval = setInterval(() => {
+        eqAnalyser.getFloatFrequencyData(dataArray);
+        
+        for (let i = 0; i < 16; i++) {
+          const freq = EQ_16_FREQS[i];
+          // Берем спектральное окно вокруг каждой ISO частоты (± 20%)
+          const lowFreq = freq * 0.8;
+          const highFreq = freq * 1.2;
+          const lowBin = Math.max(0, Math.floor((lowFreq / nyquist) * binCount));
+          const highBin = Math.min(binCount - 1, Math.ceil((highFreq / nyquist) * binCount));
+          
+          let sum = 0;
+          let count = 0;
+          for (let b = lowBin; b <= highBin; b++) {
+            const db = dataArray[b];
+            // Игнорируем полную тишину (шумовой пол ниже -120 дБ)
+            if (db > -120) {
+              // Переводим дБ в линейную амплитуду для правильного усреднения энергии
+              sum += Math.pow(10, db / 20);
+              count++;
+            }
+          }
+          const avgAmp = count > 0 ? (sum / count) : 0.0001;
+          bandAverages[i] += avgAmp;
+        }
+        
+        snapshots++;
+        
+        // Когда собрали достаточно данных
+        if (snapshots >= maxSnapshots) {
+          clearInterval(interval);
+          
+          let totalAmp = 0;
+          for (let i = 0; i < 16; i++) {
+            bandAverages[i] /= maxSnapshots;
+            totalAmp += bandAverages[i];
+          }
+          
+          // Средняя энергия всего трека (базовая линия)
+          const avgTrackAmp = totalAmp / 16;
+          const baseTargetDb = 20 * Math.log10(avgTrackAmp);
+          
+          const newEqValues = [];
+          for (let i = 0; i < 16; i++) {
+            const freq = EQ_16_FREQS[i];
+            const currentDb = 20 * Math.log10(bandAverages[i]);
+            
+            // Целевая кривая: Не чисто плоская (белый шум), а с уклоном розового шума
+            // Человеческое ухо воспринимает как "ровную" кривую с небольшим спадом на ВЧ.
+            // Делаем спад ~1.2 дБ на октаву относительно 1 кГц
+            const octavesFrom1k = Math.log2(freq / 1000);
+            const pinkTargetDb = baseTargetDb - (1.2 * octavesFrom1k);
+            
+            // Разница между "идеалом" и тем, что играет сейчас
+            let diffDb = (pinkTargetDb - currentDb) * 0.75; // 0.75 - степень коррекции (оставляем немного характера)
+            
+            // Ограничения от -15 до +15 дБ
+            diffDb = Math.max(-15, Math.min(15, diffDb));
+            
+            // Если звук очень тихий и энергии нет (например на 20кГц), не задираем эквалайзер в потолок
+            if (bandAverages[i] <= 0.0002) diffDb = 0; 
+            
+            // Округляем до 0.5 дБ для ползунков
+            diffDb = Math.round(diffDb * 2) / 2;
+            newEqValues.push(diffDb);
+          }
+          
+          // Применяем как пресет
+          applyEqPreset(newEqValues);
+          
+          // Возвращаем кнопку в исходное состояние
+          btn.disabled = false;
+          btn.textContent = '🤖 Авто-АЧХ';
+          btn.classList.replace('bg-rose-500/20', 'bg-emerald-500/20');
+          btn.classList.replace('text-rose-300', 'text-emerald-300');
+          btn.classList.replace('border-rose-400/30', 'border-emerald-400/30');
+          showToast('АЧХ трека выровнена!');
+          haptic('ok');
+        }
+      }, 100);
+    });
+
+    
+    // === АВТОМАТИЧЕСКАЯ КАЛИБРОВКА ЗАДЕРЖЕК ЧЕРЕЗ МИКРОФОН ===
+    document.getElementById('start-mic-align-btn').addEventListener('click', async (e) => {
+      const btn = e.target;
+      const statusEl = document.getElementById('mic-status');
+      if (btn.disabled) return;
+      
+      stopEverything(); // Выключаем музыку
+      initAudioEngine();
+      
+      try {
+        statusEl.textContent = 'Запрашиваем микрофон...';
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false } });
+        
+        if (audioCtx.state !== 'running') await audioCtx.resume();
+        
+        btn.disabled = true;
+        btn.classList.replace('bg-rose-500/20', 'bg-slate-700');
+        
+        // Сохраняем в window чтобы сборщик мусора (GC) не убил процессор
+        window._micStream = stream;
+        window._micSource = audioCtx.createMediaStreamSource(stream);
+        window._micProcessor = audioCtx.createScriptProcessor(4096, 1, 1);
+        
+        window._micSource.connect(window._micProcessor);
+        window._micProcessor.connect(audioCtx.destination);
+        
+        let phase = 0; // 0: ждем L, 1: ждем R, 2: готово
+        let peakL = 0, peakR = 0;
+        
+        let recordBuffer = [];
+        let isRecording = false;
+        let samplesRecorded = 0;
+        const targetSamples = Math.floor(audioCtx.sampleRate * 0.25); // 250 мс записи
+        
+        const fireClick = (pan) => {
+          const now = audioCtx.currentTime;
+          const clickTime = now + 0.1; 
+          
+          const osc = audioCtx.createOscillator();
+          const g = audioCtx.createGain();
+          
+          // ИСПОЛЬЗУЕМ ЖЕСТКИЙ РОУТИНГ (ChannelMerger), а не программный паннер
+          const merger = audioCtx.createChannelMerger(2);
+          
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(4000, clickTime); 
+          osc.frequency.exponentialRampToValueAtTime(100, clickTime + 0.05);
+          
+          g.gain.setValueAtTime(1, clickTime);
+          g.gain.exponentialRampToValueAtTime(0.001, clickTime + 0.05);
+          
+          osc.connect(g);
+          
+          // Жестко направляем моно-сигнал генератора в физический Левый (0) или Правый (1) канал
+          if (pan === -1) {
+            g.connect(merger, 0, 0); // В левый
+          } else {
+            g.connect(merger, 0, 1); // В правый
+          }
+          
+          merger.connect(audioCtx.destination);
+          
+          osc.start(clickTime);
+          osc.stop(clickTime + 0.1);
+          
+          setTimeout(() => {
+            recordBuffer = [];
+            samplesRecorded = 0;
+            isRecording = true;
+          }, 100); 
+        };
+        
+        const analyzeBuffer = () => {
+          let maxVal = 0;
+          let maxIdx = 0;
+          // Ищем самый громкий всплеск (начало импульса)
+          for(let i = 0; i < recordBuffer.length; i++) {
+            if (Math.abs(recordBuffer[i]) > maxVal) {
+              maxVal = Math.abs(recordBuffer[i]);
+              maxIdx = i;
+            }
+          }
+          const latencyMs = (maxIdx / audioCtx.sampleRate) * 1000;
+          return latencyMs;
+        };
+        
+        window._micProcessor.onaudioprocess = (evt) => {
+          if (!isRecording) return;
+          const input = evt.inputBuffer.getChannelData(0);
+          
+          for(let i = 0; i < input.length; i++) {
+            if (samplesRecorded < targetSamples) {
+              recordBuffer.push(input[i]);
+              samplesRecorded++;
+            }
+          }
+          
+          if (samplesRecorded >= targetSamples) {
+            isRecording = false;
+            const latency = analyzeBuffer();
+            
+            if (phase === 0) {
+              peakL = latency;
+              phase = 1;
+              document.getElementById('mic-res-l').textContent = `L: ${peakL.toFixed(1)} мс`;
+              statusEl.textContent = 'Замер правого канала (Не шумите!)...';
+              setTimeout(() => { fireClick(1); }, 1000); // через секунду щелкаем правым
+            } else if (phase === 1) {
+              peakR = latency;
+              phase = 2;
+              document.getElementById('mic-res-r').textContent = `R: ${peakR.toFixed(1)} мс`;
+              
+              // Завершение и очистка
+              window._micProcessor.disconnect();
+              window._micSource.disconnect();
+              stream.getTracks().forEach(t => t.stop());
+              
+              let diff = peakL - peakR; 
+              document.getElementById('mic-res-diff').textContent = `Δ: ${diff.toFixed(2)} мс`;
+              
+              if (diff > 0) {
+                document.getElementById('fx-delay-l').value = 0;
+                document.getElementById('fx-delay-r').value = diff.toFixed(2);
+              } else {
+                document.getElementById('fx-delay-r').value = 0;
+                document.getElementById('fx-delay-l').value = (-diff).toFixed(2);
+              }
+              
+              syncAllDspParams();
+              statusEl.textContent = 'Успех! Сцена по центру.';
+              btn.disabled = false;
+              btn.classList.replace('bg-slate-700', 'bg-rose-500/20');
+              haptic('ok');
+              
+              // Принудительно убиваем аудиоконтекст с микрофоном, чтобы ОС вышла из режима звонка
+              setTimeout(() => { 
+                stopEverything(); 
+                showToast('Завершено. Можно включать музыку.'); 
+                statusEl.textContent = 'Ожидание...';
+              }, 1500);
+            }
+          }
+        };
+        
+        statusEl.textContent = 'Внимание! Замер левого канала...';
+        setTimeout(() => { fireClick(-1); }, 800); // 800мс на подготовку
+        
+      } catch (err) {
+        statusEl.textContent = 'Ошибка: Микрофон недоступен';
+        btn.disabled = false;
+        btn.classList.replace('bg-slate-700', 'bg-rose-500/20');
+      }
+    });
+
+    document.getElementById('eq-flat-btn').addEventListener('click', () => {
+      applyEqPreset(EQ_PRESETS.flat);
+      showToast('16 полос эквалайзера сброшены в 0 дБ');
+    });
+
+    document.querySelectorAll('.eq-preset-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const key = btn.getAttribute('data-preset');
+        if (EQ_PRESETS[key]) {
+          applyEqPreset(EQ_PRESETS[key]);
+          showToast(`Пресет эквалайзера: ${btn.textContent}`);
+        }
+      });
+    });
+
+    // Отдельно пересчет импульса реверберации при смене размера зала
+    document.getElementById('fx-reverb-decay').addEventListener('input', (e) => {
+      const sec = parseFloat(e.target.value) || 2.2;
+      
+      // Расчет м2 (0.4с = 5 м2, 5.0с = 100 м2)
+      let m2 = 5 + ((sec - 0.4) / (5.0 - 0.4)) * 95;
+      if (m2 > 100) m2 = 100;
+      let m3 = m2 * 3; // высота потолка ~3м
+
+      document.getElementById('val-reverb-decay').innerHTML = `${sec.toFixed(1)} с <br><span class="text-[9px] text-slate-400">≈ ${Math.round(m2)} м², ${Math.round(m3)} м³</span>`;
+      
+      if (audioCtx && convolverNode) {
+        convolverNode.buffer = buildReverbImpulse(sec);
+      }
+    });
+
+    // Тестовая кнопка явного сдвига 35 мс (эффект Хааса)
+    document.getElementById('haas-test-btn').addEventListener('click', () => {
+      initAudioEngine();
+      document.getElementById('fx-delay-l').value = 35;
+      document.getElementById('fx-delay-r').value = 0;
+      syncAllDspParams();
+      haptic('medium');
+      showToast('Левый канал задержан на 35 мс!');
+    });
+
+    // Калькулятор дистанции
+    document.getElementById('calc-lr-btn').addEventListener('click', () => {
+      initAudioEngine();
+      const dL = parseFloat(document.getElementById('dist-l').value) || 0;
+      const dR = parseFloat(document.getElementById('dist-r').value) || 0;
+      const max = Math.max(dL, dR);
+      document.getElementById('fx-delay-l').value = ((max - dL) / SPEED_OF_SOUND).toFixed(2);
+      document.getElementById('fx-delay-r').value = ((max - dR) / SPEED_OF_SOUND).toFixed(2);
+      syncAllDspParams();
+      haptic('ok');
+      showToast('Задержка L/R рассчитана!');
+    });
+
+    document.getElementById('calc-sub-btn').addEventListener('click', () => {
+      initAudioEngine();
+      const dL = parseFloat(document.getElementById('dist-l').value) || 0;
+      const dR = parseFloat(document.getElementById('dist-r').value) || 0;
+      const dSub = parseFloat(document.getElementById('dist-sub').value) || 0;
+      const max = Math.max(dL, dR, dSub);
+      document.getElementById('fx-delay-l').value = ((max - dL) / SPEED_OF_SOUND).toFixed(2);
+      document.getElementById('fx-delay-r').value = ((max - dR) / SPEED_OF_SOUND).toFixed(2);
+      syncAllDspParams();
+      haptic('ok');
+      showToast('Синхронизировано с сабвуфером!');
+    });
+
+    // Bypass (Вкл / Выкл DSP)
+    document.getElementById('bypass-btn').addEventListener('click', () => {
+      initAudioEngine();
+      isBypassed = !isBypassed;
+      const btn = document.getElementById('bypass-btn');
+      const now = audioCtx.currentTime;
+      if (isBypassed) {
+        dryBypassGain.gain.setTargetAtTime(1, now, 0.02);
+        wetMasterGain.gain.setTargetAtTime(0, now, 0.02);
+        btn.textContent = 'DSP: ВЫКЛ';
+        btn.className = 'px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-400/30';
+        showToast('Прямой звук (без обработки)');
+      } else {
+        dryBypassGain.gain.setTargetAtTime(0, now, 0.02);
+        wetMasterGain.gain.setTargetAtTime(1, now, 0.02);
+        btn.textContent = 'DSP: ВКЛ';
+        btn.className = 'px-2.5 py-1.5 rounded-xl text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-400/30';
+        showToast('DSP процессор включен');
+      }
+      haptic('light');
+    });
+
+    // Сброс всех эффектов
+    document.getElementById('reset-all-dsp-btn').addEventListener('click', () => {
+      document.getElementById('fx-delay-l').value = 0;
+      document.getElementById('fx-delay-r').value = 0;
+      document.getElementById('fx-stereo-width').value = 100;
+      document.getElementById('fx-pan').value = 0;
+      document.getElementById('fx-reverb-mix').value = 0;
+      document.getElementById('fx-echo-mix').value = 0;
+      document.getElementById('fx-autopan').value = 0;
+      EQ_16_FREQS.forEach((_, idx) => {
+        const el = document.getElementById(`fx-eq-band-${idx}`);
+        if (el) el.value = 0;
+      });
+      document.getElementById('fx-drive').value = 0;
+      document.getElementById('fx-lpf').value = 20000;
+      syncAllDspParams();
+      haptic('medium');
+      showToast('Все эффекты сброшены в 0');
+    });
+
+    // =========================================================================
+    // 4. ИСТОЧНИКИ ЗВУКА: ЧАНКОВЫЙ СТРИМИНГ РАДИО (ДЛЯ iOS), ФАЙЛЫ И СИНТЕЗАТОР
+    // =========================================================================
+    function startKeepAliveSession(title) {
+      requestWakeLock();
+      keepAliveAudio.play().catch(() => {});
+      updateLockScreenMetadata(title);
+      document.getElementById('pocket-station-title').textContent = title;
+    }
+
+    function stopEverything() {
+      isPlaying = false;
+      if (radioAbortCtrl) {
+        radioAbortCtrl.abort();
+        radioAbortCtrl = null;
+      }
+      if (radioHtmlAudio) {
+        radioHtmlAudio.pause();
+        radioHtmlAudio.removeAttribute('src');
+        radioHtmlAudio.load();
+        radioHtmlAudio = null;
+        radioMediaNode = null;
+      }
+      if (fileBufferSource) {
+        try { fileBufferSource.stop(); } catch (e) {}
+        fileBufferSource.disconnect();
+        fileBufferSource = null;
+      }
+      if (clickTimer) {
+        clearInterval(clickTimer);
+        clickTimer = null;
+        const clickBtn = document.getElementById('test-click-btn');
+        if (clickBtn) clickBtn.textContent = '🥁 Тест-щелчки';
+      }
+      if (window._micStream) {
+        window._micStream.getTracks().forEach(t => t.stop());
+        window._micStream = null;
+      }
+
+      // Полный сброс аудио-контекста:
+      // 1. Мгновенно убивает звук (без задержки остатков буфера)
+      // 2. Освобождает ОС от "Режима звонка/Микрофона" возвращая Bluetooth в стерео-музыку
+      if (audioCtx) {
+        audioCtx.close().catch(() => {});
+        audioCtx = null;
+        eqAnalyser = null;
+      }
+
+      keepAliveAudio.pause();
+      if ('mediaSession' in navigator) {
+        try { navigator.mediaSession.playbackState = 'paused'; } catch (e) {}
+      }
+
+      document.getElementById('main-play-icon').textContent = '▶';
+      document.getElementById('main-play-text').textContent = 'Запустить эфир';
+    }
+
+    // ПОТОКОВОЕ РАДИО С БОЛЬШИМ ПРЕДБУФЕРОМ И ФОНОВОЙ ПОДДЕРЖКОЙ ЭКРАНА БЛОКИРОВКИ
+    async function startRadioWebAudioStream() {
+      initAudioEngine();
+      
+      // Не вызываем stopEverything(), чтобы не мигала кнопка, просто очищаем предыдущее
+      if (radioAbortCtrl) { radioAbortCtrl.abort(); radioAbortCtrl = null; }
+      if (radioHtmlAudio) { radioHtmlAudio.pause(); radioHtmlAudio.src=''; radioHtmlAudio=null; radioMediaNode=null; }
+      if (fileBufferSource) { try { fileBufferSource.stop(); } catch(e){} fileBufferSource.disconnect(); fileBufferSource=null; }
+      
+      activeMode = 'radio';
+      isPlaying = true;
+      document.getElementById('seek-container').classList.add('hidden');
+
+      const sel = document.getElementById('radio-select');
+      let rawUrl = sel.value === 'custom'
+        ? document.getElementById('custom-url-input').value.trim()
+        : sel.value;
+
+      const quality = document.getElementById('stream-quality').value;
+      if (quality === 'high') {
+        rawUrl = rawUrl.replace('96.aacp', '320.mp3');
+        rawUrl = rawUrl.replace('128-mp3', '256-mp3');
+      }
+
+      const stationTitle = sel.options[sel.selectedIndex]?.text || 'Онлайн-радио';
+      document.getElementById('now-playing-title').textContent = stationTitle;
+      document.getElementById('source-type-badge').textContent = 'ПОТОК РАДИО В DSP...';
+      document.getElementById('main-play-text').textContent = 'Подключение...';
+
+      radioAbortCtrl = new AbortController();
+      startKeepAliveSession(stationTitle);
+      
+      let hasPlayedChunks = false;
+
+      try {
+        const response = await fetch(rawUrl, { signal: radioAbortCtrl.signal });
+        if (!response.body) throw new Error('No ReadableStream');
+
+        const reader = response.body.getReader();
+        let byteAccumulator = new Uint8Array(0);
+        let nextPlayTime = 0;
+        let isFirstChunk = true;
+
+        document.getElementById('source-type-badge').textContent = 'РАДИО (DSP + ФОН АКТИВЕН)';
+        document.getElementById('main-play-icon').textContent = '🔊';
+        document.getElementById('main-play-text').textContent = 'В эфире (DSP активен)';
+
+        while (isPlaying) {
+          const { value, done } = await reader.read();
+          if (done) {
+             if (isPlaying) throw new Error('Stream End');
+             break;
+          }
+          if (!isPlaying) break;
+
+          const combined = new Uint8Array(byteAccumulator.length + value.length);
+          combined.set(byteAccumulator, 0);
+          combined.set(value, byteAccumulator.length);
+          byteAccumulator = combined;
+
+          const targetSize = isFirstChunk ? 48000 : 96000;
+
+          if (byteAccumulator.length >= targetSize) {
+            isFirstChunk = false;
+            hasPlayedChunks = true;
+            const sliceToDecode = byteAccumulator.buffer.slice(0);
+            byteAccumulator = new Uint8Array(0);
+
+            audioCtx.decodeAudioData(sliceToDecode).then(decodedBuf => {
+              if (!isPlaying) return;
+              if (audioCtx.state !== 'running') audioCtx.resume().catch(() => {});
+
+              const src = audioCtx.createBufferSource();
+              src.buffer = decodedBuf;
+              src.connect(inputBus);
+
+              const now = audioCtx.currentTime;
+              if (nextPlayTime < now) nextPlayTime = now + 0.08;
+              src.start(nextPlayTime);
+              nextPlayTime += decodedBuf.duration;
+            }).catch(() => {});
+          }
+        }
+      } catch (err) {
+        if (err.name === 'AbortError' || !isPlaying) return;
+        
+        if (hasPlayedChunks) {
+          showToast('Обрыв связи. Реконнект...');
+          document.getElementById('source-type-badge').textContent = 'ПЕРЕПОДКЛЮЧЕНИЕ...';
+          setTimeout(() => { if (isPlaying) startRadioWebAudioStream(); }, 3000);
+        } else {
+          startFallbackRadioElement(rawUrl, stationTitle);
+        }
+      }
+    }
+
+    function startFallbackRadioElement(url, stationTitle = 'Онлайн-радио') {
+      if (!radioHtmlAudio) {
+        radioHtmlAudio = new Audio();
+        radioHtmlAudio.crossOrigin = 'anonymous';
+        radioHtmlAudio.playsInline = true;
+      }
+      
+      if (audioCtx && !radioMediaNode) {
+          radioMediaNode = audioCtx.createMediaElementSource(radioHtmlAudio);
+          radioMediaNode.connect(inputBus);
+      }
+
+      radioHtmlAudio.src = url;
+      radioHtmlAudio.onstalled = radioHtmlAudio.onerror = radioHtmlAudio.onwaiting = (e) => {
+         if (isPlaying && e.type === 'error') {
+            if (radioHtmlAudio.crossOrigin === 'anonymous') {
+                radioHtmlAudio.crossOrigin = null;
+                radioHtmlAudio.src = url;
+                radioHtmlAudio.play().catch(()=>{});
+                showToast('DSP отключен (сервер без CORS), но звук будет!');
+            } else {
+                showToast('Обрыв потока. Реконнект...');
+                setTimeout(() => { if (isPlaying) { radioHtmlAudio.load(); radioHtmlAudio.play().catch(()=>{}); } }, 3000);
+            }
+         }
+      };
+
+      radioHtmlAudio.play().then(() => {
+        isPlaying = true;
+        startKeepAliveSession(stationTitle);
+        document.getElementById('source-type-badge').textContent = 'РАДИО ЭФИР (ФОНЫ АКТИВНЫ)';
+        document.getElementById('main-play-icon').textContent = '🔊';
+        document.getElementById('main-play-text').textContent = 'В эфире';
+      }).catch(() => {
+        if (isPlaying) {
+          showToast('Ошибка сети. Реконнект...');
+          setTimeout(() => { if (isPlaying) startFallbackRadioElement(url, stationTitle); }, 3000);
+        }
+      });
+    }
+
+    // ЗАГРУЗКА И ПРОИГРЫВАНИЕ СВОЕГО ФАЙЛА (MP3 / FLAC / WAV)
+    document.getElementById('file-input').addEventListener('change', async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      stopEverything();
+      initAudioEngine();
+      activeMode = 'file';
+
+      document.getElementById('now-playing-title').textContent = file.name;
+      document.getElementById('source-type-badge').textContent = 'ДЕКОДИРОВАНИЕ ФАЙЛА...';
+      showToast('Загрузка в память DSP...');
+
+      try {
+        const buf = await file.arrayBuffer();
+        fileAudioBuffer = await audioCtx.decodeAudioData(buf);
+        filePauseOffset = 0;
+        document.getElementById('seek-container').classList.remove('hidden');
+        document.getElementById('time-total').textContent = formatTime(fileAudioBuffer.duration);
+        startDecodedFile(0);
+        haptic('ok');
+      } catch (err) {
+        showToast('Формат файла не поддерживается');
+      }
+    });
+
+    function startDecodedFile(offset = 0) {
+      if (!fileAudioBuffer) return;
+      stopEverything();
+      initAudioEngine();
+      activeMode = 'file';
+      isPlaying = true;
+
+      const trackTitle = document.getElementById('now-playing-title').textContent;
+      startKeepAliveSession(trackTitle);
+
+      fileBufferSource = audioCtx.createBufferSource();
+      fileBufferSource.buffer = fileAudioBuffer;
+      fileBufferSource.connect(inputBus);
+
+      fileStartTime = audioCtx.currentTime - offset;
+      fileBufferSource.start(0, offset);
+
+      document.getElementById('source-type-badge').textContent = 'ЛОКАЛЬНЫЙ ТРЕК (DSP + ФОН)';
+      document.getElementById('main-play-icon').textContent = '⏸';
+      document.getElementById('main-play-text').textContent = 'Играет трек';
+    }
+
+    document.getElementById('seek-slider').addEventListener('input', (e) => {
+      if (!fileAudioBuffer) return;
+      const pct = parseFloat(e.target.value) / 100;
+      const targetSec = pct * fileAudioBuffer.duration;
+      filePauseOffset = targetSec;
+      if (isPlaying && activeMode === 'file') {
+        startDecodedFile(targetSec);
+      }
+    });
+
+    // Автоматическое пробуждение AudioContext после телефонного звонка при любом касании экрана
+    ['touchstart', 'click'].forEach(evtName => {
+      document.addEventListener(evtName, () => {
+        if (audioCtx && audioCtx.state !== 'running') {
+          audioCtx.resume().catch(() => {});
+        }
+      }, { passive: true });
+    });
+
+    // ТЕСТОВЫЕ ЩЕЛЧКИ (ВНУТРИ ВКЛАДКИ ЗАДЕРЖЕК ДЛЯ ПРОВЕРКИ ФАЗЫ И СЦЕНЫ)
+    document.getElementById('test-click-btn').addEventListener('click', (e) => {
+      if (clickTimer) {
+        stopEverything();
+        document.getElementById('source-type-badge').textContent = 'ОСТАНОВЛЕНО';
+        showToast('Тест-щелчки остановлены');
+        haptic('light');
+        return;
+      }
+      stopEverything();
+      initAudioEngine();
+      activeMode = 'click';
+      isPlaying = true;
+      e.currentTarget.textContent = '⏹ Стоп щелчки';
+      document.getElementById('now-playing-title').textContent = 'Тестовый импульс (Метроном)';
+      document.getElementById('source-type-badge').textContent = 'ГЕНЕРАТОР ФАЗЫ';
+
+      const fireImpulse = () => {
+        const now = audioCtx.currentTime;
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(1200, now);
+        osc.frequency.exponentialRampToValueAtTime(140, now + 0.04);
+        g.gain.setValueAtTime(0.8, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+        osc.connect(g);
+        g.connect(inputBus);
+        osc.start(now);
+        osc.stop(now + 0.05);
+      };
+      fireImpulse();
+      clickTimer = setInterval(fireImpulse, 600);
+      showToast('Щелчки запущены! Двигайте ползунки задержки L/R');
+      haptic('light');
+    });
+
+    // ГЛАВНЫЕ КНОПКИ ПЛЕЕРА
+    document.getElementById('main-play-btn').addEventListener('click', () => {
+      initAudioEngine();
+      if (activeMode === 'file' && fileAudioBuffer) {
+        if (isPlaying) {
+          filePauseOffset = (audioCtx.currentTime - fileStartTime) % fileAudioBuffer.duration;
+          stopEverything();
+        } else {
+          startDecodedFile(filePauseOffset);
+        }
+      } else {
+        startRadioWebAudioStream();
+      }
+      haptic('medium');
+    });
+
+    document.getElementById('main-stop-btn').addEventListener('click', () => {
+      stopEverything();
+      document.getElementById('source-type-badge').textContent = 'ОСТАНОВЛЕНО';
+      haptic('light');
+    });
+
+    document.getElementById('radio-select').addEventListener('change', (e) => {
+      const customInp = document.getElementById('custom-url-input');
+      if (e.target.value === 'custom') {
+        customInp.classList.remove('hidden');
+      } else {
+        customInp.classList.add('hidden');
+        startRadioWebAudioStream();
+      }
+    });
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60);
+      const s = Math.floor(sec % 60);
+      return `${m}:${s < 10 ? '0' : ''}${s}`;
+    }
+
+    // =========================================================================
+    // 5. ПРЫГАЮЩИЙ СПЕКТРАЛЬНЫЙ ВИЗУАЛИЗАТОР (60 FPS CANVAS + ПИКИ + ОСЦИЛЛОГРАФ)
+    // =========================================================================
+    const canvas = document.getElementById('visualizer-canvas');
+    const ctx2d = canvas.getContext('2d');
+    const numBars = 36;
+    const peakHolds = new Float32Array(numBars);
+    const smoothBars = new Float32Array(numBars);
+
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.max(rect.width * dpr, 300);
+      canvas.height = Math.max(rect.height * dpr, 150);
+    }
+    window.addEventListener('resize', resizeCanvas);
+    setTimeout(resizeCanvas, 50);
+
+    document.getElementById('vis-mode-btn').addEventListener('click', (e) => {
+      visMode = (visMode + 1) % 3;
+      const names = ['📊 Спектр', '〰️ Волна', '💎 Зеркало'];
+      e.target.textContent = names[visMode];
+      haptic('sel');
+    });
+
+    function renderVisualizerLoop() {
+      requestAnimationFrame(renderVisualizerLoop);
+
+      // Обновляем таймер локального трека
+      if (isPlaying && activeMode === 'file' && fileAudioBuffer && audioCtx) {
+        const elapsed = (audioCtx.currentTime - fileStartTime);
+        if (elapsed <= fileAudioBuffer.duration) {
+          document.getElementById('time-current').textContent = formatTime(elapsed);
+          document.getElementById('seek-slider').value = ((elapsed / fileAudioBuffer.duration) * 100).toFixed(1);
+        }
+      }
+
+      const w = canvas.width;
+      const h = canvas.height;
+      ctx2d.clearRect(0, 0, w, h);
+
+      // Фоновая студийная сетка
+      ctx2d.strokeStyle = 'rgba(255, 255, 255, 0.04)';
+      ctx2d.lineWidth = 1;
+      for (let y = h * 0.25; y < h; y += h * 0.25) {
+        ctx2d.beginPath();
+        ctx2d.moveTo(0, y);
+        ctx2d.lineTo(w, y);
+        ctx2d.stroke();
+      }
+
+      const freqData = new Uint8Array(analyser ? analyser.frequencyBinCount : 128);
+      const timeData = new Uint8Array(analyser ? analyser.fftSize : 256);
+
+      if (analyser && isPlaying) {
+        analyser.getByteFrequencyData(freqData);
+        analyser.getByteTimeDomainData(timeData);
+      } else {
+        // Плавное дыхание спектра в режиме ожидания
+        const t = performance.now() * 0.0025;
+        for (let i = 0; i < freqData.length; i++) {
+          freqData[i] = isPlaying ? 20 : Math.floor(10 + 8 * Math.sin(t + i * 0.25));
+        }
+        for (let i = 0; i < timeData.length; i++) {
+          timeData[i] = 128 + Math.floor(6 * Math.sin(t * 1.5 + i * 0.1));
+        }
+      }
+
+      if (visMode === 0) {
+        // РЕЖИМ 0: ПРЫГАЮЩИЕ СТОЛБИКИ СПЕКТРА С ПАДАЮЩИМИ ПИКАМИ
+        const padX = 12;
+        const usableW = w - padX * 2;
+        const stepW = usableW / numBars;
+        const barW = Math.max(stepW * 0.72, 3);
+
+        for (let i = 0; i < numBars; i++) {
+          const binIdx = Math.min(Math.floor(Math.pow(i / numBars, 1.35) * (freqData.length * 0.75)), freqData.length - 1);
+          const rawVal = freqData[binIdx] / 255;
+
+          smoothBars[i] = smoothBars[i] * 0.65 + rawVal * 0.35;
+          const barH = Math.max(smoothBars[i] * (h - 28), 4);
+
+          if (barH >= peakHolds[i]) {
+            peakHolds[i] = barH;
+          } else {
+            peakHolds[i] = Math.max(peakHolds[i] - 1.2, 4);
+          }
+
+          const x = padX + i * stepW;
+          const y = h - barH - 4;
+
+          const grad = ctx2d.createLinearGradient(0, h, 0, 12);
+          grad.addColorStop(0, '#38bdf8');
+          grad.addColorStop(0.55, '#818cf8');
+          grad.addColorStop(1, '#f472b6');
+
+          ctx2d.fillStyle = grad;
+          ctx2d.beginPath();
+          ctx2d.roundRect(x, y, barW, barH, 3);
+          ctx2d.fill();
+
+          // Светящаяся шапочка пика
+          const peakY = h - peakHolds[i] - 8;
+          ctx2d.fillStyle = '#f8fafc';
+          ctx2d.fillRect(x, Math.max(peakY, 4), barW, 2.5);
+        }
+      } else if (visMode === 1) {
+        // РЕЖИМ 1: НЕОНОВЫЙ ОСЦИЛЛОГРАФ ВОЛНЫ
+        ctx2d.lineWidth = 3;
+        ctx2d.strokeStyle = '#38bdf8';
+        ctx2d.shadowColor = '#38bdf8';
+        ctx2d.shadowBlur = 12;
+        ctx2d.beginPath();
+
+        const slice = w / (timeData.length - 1);
+        for (let i = 0; i < timeData.length; i++) {
+          const v = (timeData[i] - 128) / 128;
+          const x = i * slice;
+          const y = h / 2 + v * (h * 0.42);
+          if (i === 0) ctx2d.moveTo(x, y);
+          else ctx2d.lineTo(x, y);
+        }
+        ctx2d.stroke();
+        ctx2d.shadowBlur = 0;
+      } else {
+        // РЕЖИМ 2: ЗЕРКАЛЬНЫЙ SYMMETRY-СПЕКТР ОТ ЦЕНТРА
+        const padX = 12;
+        const usableW = w - padX * 2;
+        const stepW = usableW / numBars;
+        const barW = Math.max(stepW * 0.7, 3);
+        const midY = h / 2;
+
+        for (let i = 0; i < numBars; i++) {
+          const binIdx = Math.floor((i / numBars) * (freqData.length * 0.65));
+          const val = (freqData[binIdx] / 255) * (h * 0.44);
+          const halfH = Math.max(val, 2);
+          const x = padX + i * stepW;
+
+          ctx2d.fillStyle = i % 2 === 0 ? '#34d399' : '#38bdf8';
+          ctx2d.beginPath();
+          ctx2d.roundRect(x, midY - halfH, barW, halfH * 2, 4);
+          ctx2d.fill();
+        }
+      }
+    }
+    renderVisualizerLoop();
+
+    // =========================================================================
+    // 6. УПРАВЛЕНИЕ ВСПЛЫВАЮЩЕЙ ВКЛАДКОЙ (DRAWER), КАРМАННЫМ РЕЖИМОМ И ТАБАМИ
+    // =========================================================================
+    const pocketOverlay = document.getElementById('pocket-overlay');
+    document.getElementById('pocket-mode-btn').addEventListener('click', () => {
+      requestWakeLock();
+      pocketOverlay.classList.remove('hidden');
+      pocketOverlay.classList.add('flex');
+      haptic('medium');
+    });
+
+    function closePocketMode() {
+      pocketOverlay.classList.add('hidden');
+      pocketOverlay.classList.remove('flex');
+      haptic('light');
+    }
+
+    document.getElementById('exit-pocket-btn').addEventListener('click', closePocketMode);
+    pocketOverlay.addEventListener('dblclick', closePocketMode);
+
+    document.getElementById('bg-mode-toggle').addEventListener('click', (e) => {
+      bgLockScreenEnabled = !bgLockScreenEnabled;
+      if (bgLockScreenEnabled) {
+        e.target.textContent = '🔒 Фон и экран блока: ВКЛ';
+        e.target.className = 'text-[10px] px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 mono font-bold active:scale-95 transition';
+        if (isPlaying) keepAliveAudio.play().catch(() => {});
+        showToast('Удержание звука на экране блокировки включено');
+      } else {
+        e.target.textContent = '🔓 Фон: ВЫКЛ';
+        e.target.className = 'text-[10px] px-2.5 py-1 rounded-full bg-white/10 text-slate-400 border border-white/10 mono font-bold active:scale-95 transition';
+        keepAliveAudio.pause();
+        showToast('Фоновое удержание отключено');
+      }
+      haptic('sel');
+    });
+
+    const drawer = document.getElementById('dsp-drawer');
+    const backdrop = document.getElementById('drawer-backdrop');
+    const panel = document.getElementById('drawer-panel');
+
+    function openDrawer() {
+      drawer.classList.remove('pointer-events-none');
+      backdrop.classList.remove('opacity-0');
+      panel.classList.remove('translate-y-full');
+      haptic('light');
+    }
+
+    function closeDrawer() {
+      backdrop.classList.add('opacity-0');
+      panel.classList.add('translate-y-full');
+      setTimeout(() => drawer.classList.add('pointer-events-none'), 320);
+      haptic('light');
+    }
+
+    document.getElementById('open-dsp-drawer-btn').addEventListener('click', openDrawer);
+    document.getElementById('close-dsp-drawer-btn').addEventListener('click', closeDrawer);
+    backdrop.addEventListener('click', closeDrawer);
+
+    // Переключение вкладок внутри шторки эффектов
+    document.querySelectorAll('.dsp-tab-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-tab');
+        document.querySelectorAll('.dsp-tab-content').forEach(el => el.classList.add('hidden'));
+        document.getElementById(target).classList.remove('hidden');
+
+        document.querySelectorAll('.dsp-tab-btn').forEach(b => {
+          b.className = 'dsp-tab-btn flex-1 py-2 rounded-xl text-xs font-bold bg-white/10 text-slate-300';
+        });
+        btn.className = 'dsp-tab-btn flex-1 py-2 rounded-xl text-xs font-bold bg-sky-500 text-slate-950';
+        haptic('sel');
+      });
+    });
+
+    // Скачивание готового файла index.html
+    document.getElementById('download-html-btn').addEventListener('click', () => {
+      const htmlContent = '<!DOCTYPE html>\\n' + document.documentElement.outerHTML;
+      const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'index.html';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Файл index.html сохранен!');
+    });
+  </script>
+</body>
+</html>
